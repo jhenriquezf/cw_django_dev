@@ -3,7 +3,7 @@
     <h1>Preguntas</h1>
     <div class="d-flex flex-column">
         {% for question in object_list %}
-            <div class="card w-100 my-2 p-3">
+            <div class="card w-100 my-2 p-3" data-question-id="{{ question.pk }}" data-user-rating="{{ question.user_rating }}">
                 <div class="d-flex flex-row">
                     <div class="col-10">
                         <i class="far fa-question-circle" title="{{ question.description }}"></i>
@@ -19,9 +19,9 @@
                         <u class="fw-lighter mb-1">Respuesta</u>
                         <div>
                             {% for val in '12345' %}
-                                <a class="mx-1 answer {% if question.user_value|slugify == val %}fas{% else %}fal{% endif %} fa-star text-decoration-none"
+                                <a class="mx-1 answer {% if question.user_rating >= forloop.counter %}fas{% else %}fal{% endif %} fa-star text-decoration-none"
                                    data-question="{{ question.pk }}"
-                                   data-value="{{ val }}" href="#"></a>
+                                   data-value="{{ forloop.counter }}" href="#"></a>
                             {% endfor %}
                         </div>
                     </div>
@@ -51,9 +51,140 @@
 {% endblock %}
 
 {% block js %}
-    <script>
+<script>
+    // Función para obtener el token CSRF de las cookies
+    function getCsrfToken() {
+        let csrfToken = null;
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            let cookie = cookies[i].trim();
+            if (cookie.startsWith('csrftoken=')) {
+                csrfToken = cookie.substring('csrftoken='.length, cookie.length);
+                break;
+            }
+        }
+        return csrfToken;
+    }
 
+    // Función para enviar la solicitud de like o dislike
+    function sendVote(questionId, value) {
+        return fetch('{% url 'survey:question-like' %}', {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCsrfToken(), // Envía el token CSRF
+                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' // Especifica el tipo de contenido
+            },
+            body: 'question_pk=' + questionId + '&action=' + value // Envía los datos en el cuerpo de la solicitud
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.ok) {
+                console.log('Voto registrado con éxito');
+            } else {
+                console.log('Error al registrar el voto');
+            }
+            return data; // Devuelve los datos para su uso posterior en la cadena de Promesas
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            return { ok: false }; // Devuelve un objeto en caso de error para manejarlo adecuadamente después
+        });
+    }    
 
-    </script>
+    // Evento de clic para los botones de like
+    function updateVoteButtons(questionId, action) {
+        const likeButton = document.querySelector(`.like[data-question="${questionId}"][data-value="like"]`);
+        const dislikeButton = document.querySelector(`.like[data-question="${questionId}"][data-value="dislike"]`);
+    
+        if (action === 'like') {
+            likeButton.classList.add('fas');
+            likeButton.classList.remove('far');
+            dislikeButton.classList.add('far');
+            dislikeButton.classList.remove('fas');
+        } else if (action === 'dislike') {
+            dislikeButton.classList.add('fas');
+            dislikeButton.classList.remove('far');
+            likeButton.classList.add('far');
+            likeButton.classList.remove('fas');
+        }
+    }
+    
+    document.querySelectorAll('.like').forEach(button => {
+        button.addEventListener('click', function(event) {
+            event.preventDefault();
+            const questionId = this.getAttribute('data-question');
+            const value = this.getAttribute('data-value');
+    
+            sendVote(questionId, value).then(data => {
+                if (data.ok) {
+                    updateVoteButtons(questionId, value);
+                }
+            });
+        });
+    });
+    // Función para enviar la calificación de la respuesta
+    function rateAnswer(questionId, value) {
+        return fetch('{% url 'survey:question-answer' %}', {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCsrfToken(),
+                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+            },
+            body: 'question_pk=' + questionId + '&value=' + value
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.ok) {
+                console.log('Respuesta registrada con éxito');
+            } else {
+                console.log('Error al registrar la respuesta');
+            }
+            return data;
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            return { ok: false };
+        });
+    }
 
+    document.addEventListener('DOMContentLoaded', (event) => {
+        document.querySelectorAll('.card').forEach(questionCard => {
+            const questionId = questionCard.getAttribute('data-question-id');
+            const userRating = questionCard.getAttribute('data-user-rating');
+    
+            if (userRating) {
+                updateRatingStars(questionId, userRating);
+            }
+        });
+    });
+    
+    function updateRatingStars(questionId, value) {
+        for (let i = 1; i <= 5; i++) {
+            const star = document.querySelector(`.answer[data-question="${questionId}"][data-value="${i}"]`);
+    
+            if (parseInt(value) === i) {
+                star.classList.add('fas');
+                star.classList.remove('fal');
+            } else {
+                star.classList.add('fal');
+                star.classList.remove('fas');
+            }
+        }
+    }
+
+    // Evento de clic para las estrellas de calificación
+    document.querySelectorAll('.answer').forEach(star => {
+        star.addEventListener('click', function(event) {
+            event.preventDefault();
+            const questionId = this.getAttribute('data-question');
+            const value = parseInt(this.getAttribute('data-value'));
+    
+            rateAnswer(questionId, value).then(data => {
+                if (data.ok) {
+                    updateRatingStars(questionId, value);
+                }
+            });
+        });
+    });    
+</script>
 {% endblock %}
